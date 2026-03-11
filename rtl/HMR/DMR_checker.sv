@@ -17,12 +17,14 @@
 module DMR_checker #(
   parameter type check_bus_t = logic,
   parameter int unsigned Pipeline  = 0,
-  parameter bit AxiBus = 1'b0
+  parameter bit AxiBus = 1'b0,
+  parameter bit TD_MODE = 1'b0
 )(
   input  logic       clk_i,
   input  logic       rst_ni,
   input  check_bus_t inp_a_i,
   input  check_bus_t inp_b_i,
+  input  logic       td_check_en_i,
   output check_bus_t check_o,
   output logic       error_o
 );
@@ -84,7 +86,39 @@ end else begin: gen_generic_checker
   end
   assign error = |compare;
 end
-assign check_o = (error) ? '0 : inp_q;
-assign error_o = error;
+// assign check_o = (error) ? '0 : inp_q;
+
+always_comb begin
+  if (TD_MODE == 1'b1) begin
+    if (td_check_en_i == 1'b1) begin
+      if (error) begin
+        check_o = '0;
+      end else begin
+        check_o = inp_q;
+      end
+    end else begin
+      check_o = '0;
+    end
+  end else begin
+    if (error) begin
+      check_o = '0;
+    end else begin
+      check_o = inp_q;
+    end
+  end
+end
+// assign error_o = error;
+
+always_comb begin
+  if (TD_MODE == 1'b1) begin
+    if (td_check_en_i == 1'b1) begin
+      error_o = error;
+    end else begin
+      error_o = 1'b0;
+    end
+  end else begin
+    error_o = error;
+  end
+end
 
 endmodule : DMR_checker
