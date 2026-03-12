@@ -8,26 +8,21 @@ module DMR_delay_chain #(
     input   logic   setback_i,
     input   logic   en_timing_diversity_i,
     input   data_t  inputs_i,
-    output  logic   setback_o,
     output  data_t  outputs_o
 );
 
     data_t [NUM_DELAYS-1:0] r_inputs;
     logic r_en;
-    logic [NUM_DELAYS-1:0] r_setback;
 
     generate
         for (genvar i=0; i<NUM_DELAYS; i++) begin
             always_ff @(posedge clk_i, negedge rst_ni) begin
                 if (rst_ni == 1'b0) begin
                     r_inputs[i]  <= '0;
-                    r_setback[i] <= '0;
                 end else if (i==0) begin
                     r_inputs[i]  <= inputs_i;
-                    r_setback[i] <= setback_i;
                 end else begin
                     r_inputs[i]  <= r_inputs[i-1];
-                    r_setback[i] <= r_setback[i-1];
                 end
             end
         end
@@ -46,6 +41,5 @@ module DMR_delay_chain #(
     end
 
     assign outputs_o = r_en ? r_inputs[NUM_DELAYS-1] : inputs_i;
-    assign setback_o = r_setback[NUM_DELAYS-1];
     
 endmodule

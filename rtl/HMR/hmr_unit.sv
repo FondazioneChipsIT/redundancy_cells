@@ -510,12 +510,11 @@ module hmr_unit #(
       ) i_dmr_core_outputs_delay_chain (
         .clk_i,
         .rst_ni,
-        .en_i       ( core_in_dmr[i]    ),
-        .setback_i  ( core_setback_int[i] ),
-        .en_timing_diversity_i ( TIMING_DIVERSITY ),
-        .inputs_i  ( core_nominal_outputs_i [dmr_core_id(i, 0)] ),
-        .setback_o ( ),
-        .outputs_o ( core_outputs_delayed   [dmr_core_id(i, 0)] )
+        .en_i                  ( core_in_dmr[i]                             ),
+        .setback_i             ( core_setback_int[i]                        ),
+        .en_timing_diversity_i ( TIMING_DIVERSITY                           ),
+        .inputs_i              ( core_nominal_outputs_i [dmr_core_id(i, 0)] ),
+        .outputs_o             ( core_outputs_delayed   [dmr_core_id(i, 0)] )
       );
 
       DMR_delay_chain #(
@@ -524,11 +523,11 @@ module hmr_unit #(
       ) i_dmr_core_backup_delay_chain (
         .clk_i,
         .rst_ni,
-        .en_i ( core_in_dmr[i] ),
-        .setback_i ( core_setback_int[i] ),
-        .en_timing_diversity_i ( TIMING_DIVERSITY ),
-        .inputs_i ( core_backup_i[i] ),
-        .outputs_o ( core_backup_delayed[i] )
+        .en_i                  ( core_in_dmr[i]         ),
+        .setback_i             ( core_setback_int[i]    ),
+        .en_timing_diversity_i ( TIMING_DIVERSITY       ),
+        .inputs_i              ( core_backup_i[i]       ),
+        .outputs_o             ( core_backup_delayed[i] )
       );
 
       assign r_core_backup[i] = core_backup_delayed[i];
@@ -647,10 +646,11 @@ module hmr_unit #(
       
       DMR_checker #(
         .TD_MODE     ( TIMING_DIVERSITY ),
-        .check_bus_t ( nominal_outputs_t )
+        .check_bus_t ( nominal_outputs_t ),
+        .Pipeline ( 1)
       ) dmr_core_checker_main (
-        .clk_i         (                                           ),
-        .rst_ni        (                                           ),
+        .clk_i         (   clk_i                                        ),
+        .rst_ni        (   rst_ni                                        ),
         .td_check_en_i ( dmr_td_check_en       [i                ] ),
         .inp_a_i       ( core_outputs_delayed  [dmr_core_id(i, 0)] ),
         .inp_b_i       ( core_nominal_outputs_i[dmr_core_id(i, 1)] ),
@@ -886,12 +886,24 @@ module hmr_unit #(
         ) i_dmr_core_inputs_delay_chain (
           .clk_i,
           .rst_ni,
-          .en_i      ( core_in_dmr[i]                   ),
-          .setback_i ( core_setback_int[i]                ),
+          .en_i                  ( core_in_dmr[i]                   ),
+          .setback_i             ( core_setback_int[i]              ),
           .en_timing_diversity_i ( TIMING_DIVERSITY                 ),
-          .inputs_i  ( sys_inputs_i[DMRCoreIndex]       ),
-          .setback_o ( core_setback_delayed[i] ),
-          .outputs_o ( sys_inputs_delayed[DMRCoreIndex] )
+          .inputs_i              ( sys_inputs_i[DMRCoreIndex]       ),
+          .outputs_o             ( sys_inputs_delayed[DMRCoreIndex] )
+        );
+
+        DMR_delay_chain #(
+          .NUM_DELAYS ( NUM_DELAYS            ),
+          .data_t     ( logic )
+        ) i_dmr_core_setback_delay_chain (
+          .clk_i,
+          .rst_ni,
+          .en_i                  ( core_in_dmr[i]                     ),
+          .setback_i             ( core_setback_int[i]                ),
+          .en_timing_diversity_i ( TIMING_DIVERSITY                   ),
+          .inputs_i              ( core_setback_int[i]                ),
+          .outputs_o             ( core_setback_delayed[i]            )
         );
 
         DMR_delay_chain #(
@@ -900,12 +912,11 @@ module hmr_unit #(
         ) i_dmr_rapid_recovery_delay_chain (
           .clk_i,
           .rst_ni,
-          .en_i ( core_in_dmr[i] ),
-          .setback_i ( core_setback_int[i] ),
-          .en_timing_diversity_i ( TIMING_DIVERSITY ),
-          .inputs_i ( r_rapid_recovery[i] ),
-          .setback_o ( ),
-          .outputs_o ( rapid_recovery_delayed[i] )
+          .en_i                  ( core_in_dmr[i]            ),
+          .setback_i             ( core_setback_int[i]       ),
+          .en_timing_diversity_i ( TIMING_DIVERSITY          ),
+          .inputs_i              ( r_rapid_recovery[i]       ),
+          .outputs_o             ( rapid_recovery_delayed[i] )
         );
 
         assign rapid_recovery_o[i] = rapid_recovery_delayed[i];
