@@ -63,7 +63,9 @@ module hmr_unit #(
   /// Number of physical cores NOT used for DMR
   localparam int unsigned NumDMRLeftover = NumCores - NumDMRCores,
   /// Number of cores visible to the system (Fixed mode removes unneeded system ports)
-  localparam int unsigned NumSysCores    = DMRFixed ? NumDMRGroups : TMRFixed ? NumTMRGroups : NumCores
+  localparam int unsigned NumSysCores    = DMRFixed ? NumDMRGroups : TMRFixed ? NumTMRGroups : NumCores,
+  localparam bit TimingDivMode = 1'b0,
+  localparam int unsigned NUM_DELAYS = 2
 ) (
   input  logic      clk_i ,
   input  logic      rst_ni,
@@ -206,6 +208,28 @@ module hmr_unit #(
 
   logic [NumCores-1:0] sp_store_is_zero;
   logic [NumCores-1:0] sp_store_will_be_zero;
+
+  /******************************
+   *  Timing Diversity signals  *
+   ******************************/
+  all_inputs_t [NumSysCores-1:0] sys_inputs_timing_div_muxed;
+  all_inputs_t [NumSysCores-1:0] sys_inputs_delayed;
+  logic [NumCores-1:0] TimingDiv_En;
+
+  logic             [NumCores-1:0]    core_setback_int;
+  logic             [NumCores-1:0]    core_setback_delayed;
+
+  nominal_outputs_t [NumCores-1:0]    core_nominal_outputs_delayed;
+  nominal_outputs_t [NumCores-1:0]    core_nominal_outputs_muxed;
+
+  nominal_outputs_t [NumDMRGroups-1:0] dmr_nominal_outputs_muxed;
+
+  logic [NumDMRGroups-1:0] dmr_failure_main_demuxed;
+  logic [NumDMRGroups-1:0] dmr_failure_main_OT;
+
+  logic [NumDMRGroups-1:0] dmr_td_check_en;
+  logic [NumDMRGroups-1:0] first_core_is_set;
+  logic [NumDMRGroups-1:0] second_core_is_set;
 
   assign redundancy_enable_o = (|core_in_dmr) | (|core_in_tmr);
 
@@ -565,6 +589,28 @@ module hmr_unit #(
         .recovery_finished_i   ( dmr_recovery_finished [i] )
       );
 
+      /*******************************************************************************************************************************************
+       * DMR Core Checkers: need to make sure that the checkers start cheking only when the cores are actually in synch in Timing Diversity mode *
+       *******************************************************************************************************************************************/
+
+      always_ff @(posedge clk_i, negedge rst_ni) begin
+        if (rst_ni == 1'b0) begin
+          first_core_is_set[i] <= 1'b0;
+        end else if (core_setback_o[dmr_core_id(i, 0)] == 1'b1) begin
+          first_core_is_set[i] <= 1'b1;
+        end
+      end
+
+      always_ff @(posedge clk_i, negedge rst_ni) begin
+        if (rst_ni == 1'b0) begin
+          second_core_is_set[i] <= 1'b0;
+        end else if (core_setback_o[dmr_core_id(i, 1)] == 1'b1) begin
+          second_core_is_set[i] <= 1'b1;
+        end
+      end
+
+      assign dmr_td_check_en[i] = first_core_is_set[i] & second_core_is_set[i];
+
       assign dmr_sw_synch_req_o[dmr_core_id(i, 0)] = dmr_sw_synch_req[i];
       assign dmr_sw_synch_req_o[dmr_core_id(i, 1)] = dmr_sw_synch_req[i];
 
@@ -574,13 +620,17 @@ module hmr_unit #(
       DMR_checker #(
         .check_bus_t ( nominal_outputs_t )
       ) dmr_core_checker_main (
-        .clk_i   (                                           ),
-        .rst_ni  (                                           ),
-        .inp_a_i ( core_nominal_outputs_i[dmr_core_id(i, 0)] ),
-        .inp_b_i ( core_nominal_outputs_i[dmr_core_id(i, 1)] ),
-        .check_o ( dmr_nominal_outputs   [            i    ] ),
-        .error_o ( dmr_failure_main      [            i    ] )
+        .clk_i   (                                               ),
+        .rst_ni  (                                               ),
+        .inp_a_i ( core_nominal_outputs_muxed[dmr_core_id(i, 0)] ),
+        .inp_b_i ( core_nominal_outputs_i[dmr_core_id(i, 1)]     ),
+        .check_o ( dmr_nominal_outputs      [            i    ]  ),
+        .error_o ( dmr_failure_main         [            i    ]  )
       );
+
+      assign dmr_nominal_outputs_muxed[i] = TimingDivMode ? (dmr_td_check_en[dmr_core_id(i, 0)] ? core_nominal_outputs_i[dmr_core_id(i, 0)] : '0) : dmr_nominal_outputs[i];
+      assign dmr_failure_main_OT[i]       = dmr_td_check_en[dmr_core_id(i, 0)] ? dmr_failure_main[i] : 1'b0;
+      
       if (SeparateAxiBus) begin: gen_axi_checker
         DMR_checker #(
           .AxiBus ( SeparateAxiBus ),
@@ -665,10 +715,10 @@ module hmr_unit #(
         );
 
         always_comb begin
-          dmr_failure[i] = dmr_failure_main[i] | dmr_failure_backup[i] | dmr_failure_axi[i];
+          dmr_failure[i] = TimingDivMode ? 1'b0 : (dmr_failure_main[i] | dmr_failure_backup[i] | dmr_failure_axi[i]);
           for (int j = 0; j < NumBusVoters; j++) begin
             if (enable_bus_vote_i[dmr_core_id(i, 0)][j]) begin
-              dmr_failure[i] = dmr_failure[i] | dmr_failure_backup[i] | dmr_failure_data[i][j];
+              dmr_failure[i] = TimingDivMode ? 1'b0 : (dmr_failure[i] | dmr_failure_backup[i] | dmr_failure_data[i][j]);
             end
           end
         end
@@ -769,30 +819,78 @@ module hmr_unit #(
           rapid_recovery_o  [i] = (core_in_dmr[i] ? rapid_recovery_bus [dmr_shared_id(dmr_group_id(i))] : 
                                   (core_in_tmr[i] ? rapid_recovery_bus [tmr_shared_id(tmr_group_id(i))] : '0));
 
-          core_setback_o    [i] = tmr_setback_q   [tmr_group_id(i)][tmr_offset_id(i)]
+          core_setback_int    [i] = tmr_setback_q   [tmr_group_id(i)][tmr_offset_id(i)]
                                 | dmr_setback_q   [dmr_group_id(i)][dmr_offset_id(i)]
                                 | (core_in_dmr[i] ? rapid_recovery_setback [dmr_shared_id(dmr_group_id(i))] : 
                                   (core_in_tmr[i] ? rapid_recovery_setback [tmr_shared_id(tmr_group_id(i))] : '0));
         end else begin
-          core_setback_o    [i] = tmr_setback_q   [tmr_group_id(i)][tmr_offset_id(i)]
+          core_setback_int    [i] = tmr_setback_q   [tmr_group_id(i)][tmr_offset_id(i)]
                                 | dmr_setback_q   [dmr_group_id(i)][dmr_offset_id(i)];
         end
         if (i >= NumTMRCores && i >= NumDMRCores) begin
-          core_setback_o    [i] = '0;
+          core_setback_int    [i] = '0;
         end else if (i < NumTMRCores && i >= NumDMRCores) begin
-          core_setback_o    [i] = tmr_setback_q [tmr_group_id(i)][tmr_offset_id(i)]
+          core_setback_int    [i] = tmr_setback_q [tmr_group_id(i)][tmr_offset_id(i)]
                                 | (RapidRecovery ? (core_in_tmr[i] ? rapid_recovery_setback [tmr_shared_id(tmr_group_id(i))] : '0) : '0);
         end else if (i >= NumTMRCores && i < NumDMRCores) begin
-          core_setback_o    [i] = dmr_setback_q [dmr_group_id(i)][dmr_offset_id(i)]
+          core_setback_int    [i] = dmr_setback_q [dmr_group_id(i)][dmr_offset_id(i)]
                                 | (RapidRecovery ? (core_in_dmr[i] ? rapid_recovery_setback [dmr_shared_id(dmr_group_id(i))] : '0) : '0);
         end
         if (i < NumTMRCores && core_in_tmr[i]) begin : tmr_mode
           core_inputs_o[i] = sys_inputs_i[TMRCoreIndex];
         end else if (i < NumDMRCores && core_in_dmr[i]) begin : dmr_mode
-          core_inputs_o[i] = sys_inputs_i[DMRCoreIndex];
+          if (i<(NumCores>>1)) begin
+            core_inputs_o[i] = sys_inputs_i[DMRCoreIndex];
+          end else begin
+            core_inputs_o[i] = sys_inputs_timing_div_muxed[DMRCoreIndex];
+          end
         end else begin : independent_mode
           core_inputs_o[i] = sys_inputs_i[i];
         end
+      end
+    end
+
+    for (genvar i=0; i < NumCores; i++) begin : gen_delay_chains
+    
+      assign TimingDiv_En[i] = TimingDivMode ? core_in_dmr[i] : 1'b0;
+
+      if (i>=(NumCores>>1)) begin : gen_delay_on_core_inputs
+        DMR_delay_chain #(
+          .NUM_DELAYS ( NUM_DELAYS   ),
+          .data_t     ( all_inputs_t )
+        ) i_dmr_delay_core_inputs (
+          .clk_i,
+          .rst_ni,
+          .inputs_i  ( sys_inputs_i[dmr_core_id(dmr_group_id(i), 0)]       ),
+          .outputs_o ( sys_inputs_delayed[dmr_core_id(dmr_group_id(i), 0)] )
+        );
+
+        DMR_delay_chain #(
+          .NUM_DELAYS ( NUM_DELAYS ),
+          .data_t     ( logic      )
+        ) i_dmr_delay_core_setback (
+          .clk_i,
+          .rst_ni,
+          .inputs_i   ( core_setback_int[i]     ),
+          .outputs_o  ( core_setback_delayed[i] )
+        );
+
+        assign sys_inputs_timing_div_muxed[dmr_core_id(dmr_group_id(i), 0)] = TimingDiv_En[i] ? sys_inputs_delayed[dmr_core_id(dmr_group_id(i), 0)] : sys_inputs_i[dmr_core_id(dmr_group_id(i), 0)];
+        assign core_setback_o[i] = TimingDivMode ? core_setback_delayed[i] : core_setback_int[i]; 
+      end else begin : gen_delay_on_core_outputs
+
+        DMR_delay_chain #(
+          .NUM_DELAYS ( NUM_DELAYS ),
+          .data_t (nominal_outputs_t )
+        ) i_dmr_delay_core_ouputs (
+          .clk_i,
+          .rst_ni,
+          .inputs_i  ( core_nominal_outputs_i[i]       ),
+          .outputs_o ( core_nominal_outputs_delayed[i] )
+        );
+
+        assign core_nominal_outputs_muxed[i] = TimingDiv_En[i] ? core_nominal_outputs_delayed[i] : core_nominal_outputs_i[i];
+        assign core_setback_o[i] = core_setback_int[i];
       end
     end
 
@@ -812,7 +910,7 @@ module hmr_unit #(
           end
         end else if (i < NumDMRCores && core_in_dmr[i]) begin : dmr_mode
           if (dmr_core_id(dmr_group_id(i), 0) == i) begin : is_dmr_main_core
-            sys_nominal_outputs_o[i] = dmr_nominal_outputs[DMRCoreIndex];
+            sys_nominal_outputs_o[i] = dmr_nominal_outputs_muxed[DMRCoreIndex];
             sys_axi_outputs_o[i]     = dmr_axi_outputs[DMRCoreIndex];
             for (int j = 0; j < NumBusVoters; j++) begin
               sys_bus_outputs_o[i][j] = dmr_bus_outputs[DMRCoreIndex][j];
@@ -845,13 +943,13 @@ module hmr_unit #(
           // $error("UNIMPLEMENTED");
           rapid_recovery_o  [i] = core_in_tmr[i] ? rapid_recovery_bus [tmr_shared_id(tmr_group_id(i))] : '0;
 
-          core_setback_o    [i] = tmr_setback_q   [tmr_group_id(i)]
+          core_setback_int    [i] = tmr_setback_q   [tmr_group_id(i)]
                                 | rapid_recovery_setback [tmr_shared_id(tmr_group_id(i))];
         end else begin
-          core_setback_o    [i] = tmr_setback_q   [tmr_group_id(i)];
+          core_setback_int    [i] = tmr_setback_q   [tmr_group_id(i)];
         end
         if (i >= NumTMRCores) begin
-          core_setback_o [i] = '0;
+          core_setback_int [i] = '0;
         end
         if (i < NumTMRCores && (TMRFixed || core_in_tmr[i])) begin : tmr_mode
           core_inputs_o[i] = sys_inputs_i[SysCoreIndex];
@@ -912,13 +1010,13 @@ module hmr_unit #(
           // $error("UNIMPLEMENTED");
           rapid_recovery_o  [i] = core_in_dmr[i] ? rapid_recovery_bus [dmr_shared_id(dmr_group_id(i))] : '0;
 
-          core_setback_o    [i] = dmr_setback_q[dmr_group_id(i)][dmr_offset_id(i)]
+          core_setback_int    [i] = dmr_setback_q[dmr_group_id(i)][dmr_offset_id(i)]
                                 | rapid_recovery_setback [dmr_shared_id(dmr_group_id(i))];
         end else begin
-          core_setback_o    [i] = dmr_setback_q[dmr_group_id(i)][dmr_offset_id(i)];
+          core_setback_int    [i] = dmr_setback_q[dmr_group_id(i)][dmr_offset_id(i)];
         end
         if (i >= NumDMRCores) begin
-          core_setback_o    [i] = '0;
+          core_setback_int    [i] = '0;
         end
         if (i < NumDMRCores && (DMRFixed || core_in_dmr[i])) begin : dmr_mode
           core_inputs_o[i] = sys_inputs_i[SysCoreIndex];
@@ -943,7 +1041,7 @@ module hmr_unit #(
           always_comb begin
             if (core_in_dmr[i]) begin : dmr_mode
               if (dmr_core_id(dmr_group_id(i), 0) == i) begin : is_dmr_main_core
-                sys_nominal_outputs_o[i] = dmr_nominal_outputs[CoreCoreIndex];
+                sys_nominal_outputs_o[i] = dmr_nominal_outputs_muxed[CoreCoreIndex];
                 sys_bus_outputs_o    [i] = dmr_bus_outputs    [CoreCoreIndex];
                 sys_axi_outputs_o    [i] = dmr_axi_outputs    [CoreCoreIndex];
               end else begin : disable_core // Assign disable
