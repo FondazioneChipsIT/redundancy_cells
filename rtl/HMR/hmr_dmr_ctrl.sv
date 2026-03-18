@@ -149,7 +149,7 @@ module hmr_dmr_ctrl
             dmr_red_mode_d = DMR_RESTORE;
           end else begin
             dmr_red_mode_d = DMR_RUN;
-            setback_o = 2'b11;
+            setback_o = (dmr_red_mode_q == DMR_RUN) ? 2'b11 : 2'b00;
           end
         end
       end
