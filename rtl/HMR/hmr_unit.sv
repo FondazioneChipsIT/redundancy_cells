@@ -619,7 +619,7 @@ module hmr_unit #(
        *********************/
       DMR_checker #(
         .check_bus_t ( nominal_outputs_t ),
-        .Pipeline ( 1 )
+        .Pipeline ( TimingDivMode )
       ) dmr_core_checker_main (
         .clk_i   (     clk_i                                          ),
         .rst_ni  (     rst_ni                                          ),
