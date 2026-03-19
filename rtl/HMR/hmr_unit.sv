@@ -49,6 +49,8 @@ module hmr_unit #(
   parameter  type         reg_rsp_t      = logic,
   /// Rapid recovery structure
   parameter  type         rapid_recovery_t = logic,
+  parameter  bit          TimingDivMode = 1'b0,
+  parameter  int unsigned TimingDivDelays = 0,
   // Local parameters depending on the above ones
   /// Number of TMR groups (virtual TMR cores)
   localparam int unsigned NumTMRGroups   = (TMRFixed || TMRSupported) ? NumCores/3 : 1,
@@ -63,9 +65,7 @@ module hmr_unit #(
   /// Number of physical cores NOT used for DMR
   localparam int unsigned NumDMRLeftover = NumCores - NumDMRCores,
   /// Number of cores visible to the system (Fixed mode removes unneeded system ports)
-  localparam int unsigned NumSysCores    = DMRFixed ? NumDMRGroups : TMRFixed ? NumTMRGroups : NumCores,
-  localparam bit TimingDivMode = 1'b1,
-  localparam int unsigned NUM_DELAYS = 2
+  localparam int unsigned NumSysCores    = DMRFixed ? NumDMRGroups : TMRFixed ? NumTMRGroups : NumCores
 ) (
   input  logic      clk_i ,
   input  logic      rst_ni,
@@ -861,7 +861,7 @@ module hmr_unit #(
 
       if (i>=(NumCores>>1)) begin : gen_delay_on_core_inputs
         DMR_delay_chain #(
-          .NUM_DELAYS ( NUM_DELAYS   ),
+          .NUM_DELAYS ( TimingDivDelays   ),
           .data_t     ( all_inputs_t )
         ) i_dmr_delay_core_inputs (
           .clk_i,
@@ -871,7 +871,7 @@ module hmr_unit #(
         );
 
         DMR_delay_chain #(
-          .NUM_DELAYS ( NUM_DELAYS ),
+          .NUM_DELAYS ( TimingDivDelays ),
           .data_t     ( logic      )
         ) i_dmr_delay_core_setback (
           .clk_i,
@@ -885,7 +885,7 @@ module hmr_unit #(
       end else begin : gen_delay_on_core_outputs
 
         DMR_delay_chain #(
-          .NUM_DELAYS ( NUM_DELAYS ),
+          .NUM_DELAYS ( TimingDivDelays ),
           .data_t (nominal_outputs_t )
         ) i_dmr_delay_core_ouputs (
           .clk_i,
