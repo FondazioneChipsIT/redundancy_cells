@@ -57,7 +57,7 @@ module hmr_dmr_ctrl
   logic resynch_req, resynch_req_sent_d, resynch_req_sent_q;
   logic cores_synch_q;
 
-  typedef enum logic [2:0] {NON_DMR, DMR_RUN, DMR_RESTORE} dmr_mode_e;
+  typedef enum logic [2:0] {NON_DMR, DMR_RUN, DMR_RESTORE, DMR_SETBACK, DMR_WAIT} dmr_mode_e;
   localparam dmr_mode_e DefaultDMRMode = DefaultInDMR || DMRFixed ? DMR_RUN : NON_DMR;
 
   hmr_dmr_regs_reg_pkg::hmr_dmr_regs_reg2hw_t dmr_reg2hw;
@@ -136,6 +136,15 @@ module hmr_dmr_ctrl
         end
       end
 
+      DMR_SETBACK: begin
+        dmr_red_mode_d = DMR_WAIT;
+        setback_o = 2'b11;
+      end
+
+      DMR_WAIT: begin
+        dmr_red_mode_d = DMR_RUN;
+      end
+
       // Default: do nothing
     endcase
 
@@ -148,7 +157,7 @@ module hmr_dmr_ctrl
           if (dmr_reg2hw.dmr_config.rapid_recovery.q == 1'b1) begin
             dmr_red_mode_d = DMR_RESTORE;
           end else begin
-            dmr_red_mode_d = DMR_RUN;
+            dmr_red_mode_d = DMR_SETBACK;
             // setback_o = 2'b11;
           end
         end

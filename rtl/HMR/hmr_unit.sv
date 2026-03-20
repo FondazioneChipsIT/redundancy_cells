@@ -94,7 +94,6 @@ module hmr_unit #(
   input  core_backup_t    [NumCores-1:0]    core_backup_i,
 
   // Boot address is handled apart from other signals
-  input  logic                              [SysDataWidth-1:0] sys_bootaddress_i,
   input  all_inputs_t      [NumSysCores-1:0]                   sys_inputs_i,
   output nominal_outputs_t [NumSysCores-1:0]                   sys_nominal_outputs_o,
   output bus_outputs_t     [NumSysCores-1:0][NumBusVoters-1:0] sys_bus_outputs_o,
@@ -227,9 +226,9 @@ module hmr_unit #(
   logic [NumDMRGroups-1:0] dmr_failure_main_demuxed;
   logic [NumDMRGroups-1:0] dmr_failure_main_OT;
 
-  // logic [NumDMRGroups-1:0] dmr_td_check_en;
-  // logic [NumDMRGroups-1:0] first_core_is_set;
-  // logic [NumDMRGroups-1:0] second_core_is_set;
+  logic [NumDMRGroups-1:0] dmr_td_check_en;
+  logic [NumDMRGroups-1:0] first_core_is_set;
+  logic [NumDMRGroups-1:0] second_core_is_set;
 
   assign redundancy_enable_o = (|core_in_dmr) | (|core_in_tmr);
 
@@ -593,23 +592,23 @@ module hmr_unit #(
        * DMR Core Checkers: need to make sure that the checkers start cheking only when the cores are actually in synch in Timing Diversity mode *
        *******************************************************************************************************************************************/
 
-      // always_ff @(posedge clk_i, negedge rst_ni) begin
-      //   if (rst_ni == 1'b0) begin
-      //     first_core_is_set[i] <= 1'b0;
-      //   end else if (core_setback_o[dmr_core_id(i, 0)] == 1'b1) begin
-      //     first_core_is_set[i] <= 1'b1;
-      //   end
-      // end
+      always_ff @(posedge clk_i, negedge rst_ni) begin
+        if (rst_ni == 1'b0) begin
+          first_core_is_set[i] <= 1'b0;
+        end else if (core_setback_o[dmr_core_id(i, 0)] == 1'b1) begin
+          first_core_is_set[i] <= 1'b1;
+        end
+      end
 
-      // always_ff @(posedge clk_i, negedge rst_ni) begin
-      //   if (rst_ni == 1'b0) begin
-      //     second_core_is_set[i] <= 1'b0;
-      //   end else if (core_setback_o[dmr_core_id(i, 1)] == 1'b1) begin
-      //     second_core_is_set[i] <= 1'b1;
-      //   end
-      // end
+      always_ff @(posedge clk_i, negedge rst_ni) begin
+        if (rst_ni == 1'b0) begin
+          second_core_is_set[i] <= 1'b0;
+        end else if (core_setback_o[dmr_core_id(i, 1)] == 1'b1) begin
+          second_core_is_set[i] <= 1'b1;
+        end
+      end
 
-      // assign dmr_td_check_en[i] = first_core_is_set[i] & second_core_is_set[i];
+      assign dmr_td_check_en[i] = first_core_is_set[i] & second_core_is_set[i] & TimingDivMode;
 
       assign dmr_sw_synch_req_o[dmr_core_id(i, 0)] = dmr_sw_synch_req[i];
       assign dmr_sw_synch_req_o[dmr_core_id(i, 1)] = dmr_sw_synch_req[i];
@@ -629,12 +628,8 @@ module hmr_unit #(
         .error_o ( dmr_failure_main         [            i    ]  )
       );
 
-      // assign dmr_nominal_outputs_muxed[i] = TimingDivMode ? (dmr_td_check_en[dmr_core_id(i, 0)] ? core_nominal_outputs_i[dmr_core_id(i, 0)] : '0) : dmr_nominal_outputs[i];
-      // assign dmr_failure_main_OT[i]       = dmr_td_check_en[dmr_core_id(i, 0)] ? dmr_failure_main[i] : 1'b0;
-      
       assign dmr_nominal_outputs_muxed[i] = TimingDivMode ? core_nominal_outputs_i[dmr_core_id(i, 0)] : dmr_nominal_outputs[i];
-      assign dmr_failure_main_OT[i]       = dmr_failure_main[i];
-
+      assign dmr_failure_main_OT[i]       = dmr_td_check_en[i] ? dmr_failure_main[i] : 1'b0;
 
       if (SeparateAxiBus) begin: gen_axi_checker
         DMR_checker #(
@@ -720,7 +715,7 @@ module hmr_unit #(
         );
 
         always_comb begin
-          dmr_failure[i] = dmr_failure_main[i] | (dmr_core_rapid_recovery_en[dmr_core_id(i, 0)] ? dmr_failure_backup[i] : 1'b0) | dmr_failure_axi[i];
+          dmr_failure[i] = (TimingDivMode ? (dmr_td_check_en[i] ? dmr_failure_main[i] : 1'b0) : dmr_failure_main[i]) | (dmr_core_rapid_recovery_en[dmr_core_id(i, 0)] ? dmr_failure_backup[i] : 1'b0) | dmr_failure_axi[i];
           for (int j = 0; j < NumBusVoters; j++) begin
             if (enable_bus_vote_i[dmr_core_id(i, 0)][j]) begin
               dmr_failure[i] = dmr_failure[i] | (dmr_core_rapid_recovery_en[dmr_core_id(i, 0)] ? dmr_failure_backup[i] : 1'b0) | dmr_failure_data[i][j];
@@ -818,7 +813,7 @@ module hmr_unit #(
       always_comb begin
         // Special signals
         core_bootaddress_o[i] = (checkpoint_reg_q[dmr_shared_id(dmr_group_id(i))] != '0) ?
-                                checkpoint_reg_q[dmr_shared_id(dmr_group_id(i))] : sys_bootaddress_i;
+                                checkpoint_reg_q[dmr_shared_id(dmr_group_id(i))] : sys_inputs_i[i].boot_addr;
         if (RapidRecovery) begin
           // $error("UNIMPLEMENTED");
           rapid_recovery_o  [i] = (core_in_dmr[i] ? rapid_recovery_bus [dmr_shared_id(dmr_group_id(i))] : 
@@ -942,7 +937,7 @@ module hmr_unit #(
       always_comb begin
         // Special signals
         core_bootaddress_o[i] = (checkpoint_reg_q[dmr_shared_id(dmr_group_id(i))] != '0) ?
-                                checkpoint_reg_q[dmr_shared_id(dmr_group_id(i))] : sys_bootaddress_i;
+                                checkpoint_reg_q[dmr_shared_id(dmr_group_id(i))] : sys_inputs_i.boot_addr;
         // Setback
         if (RapidRecovery) begin
           // $error("UNIMPLEMENTED");
@@ -1009,7 +1004,7 @@ module hmr_unit #(
       localparam SysCoreIndex = DMRFixed ? i/2 : dmr_core_id(dmr_group_id(i), 0);
       always_comb begin
         core_bootaddress_o[i] = (checkpoint_reg_q[SysCoreIndex] != '0) ?
-                                checkpoint_reg_q[SysCoreIndex] : sys_bootaddress_i;
+                                checkpoint_reg_q[SysCoreIndex] : sys_inputs_i.boot_addr;
         // Setback
         if (RapidRecovery) begin
           // $error("UNIMPLEMENTED");
@@ -1070,7 +1065,7 @@ module hmr_unit #(
      *****************/
     // Direct assignment, disable all
     assign core_setback_o       = '0;
-    assign core_bootaddress_o   = sys_bootaddress_i;
+    assign core_bootaddress_o   = sys_inputs_i.boot_addr;
     assign core_inputs_o        = sys_inputs_i;
     assign sys_nominal_outputs_o = core_nominal_outputs_i;
     assign sys_bus_outputs_o     = core_bus_outputs_i;

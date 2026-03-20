@@ -19,6 +19,11 @@ package hmr_dmr_regs_reg_pkg;
   } hmr_dmr_regs_reg2hw_dmr_enable_reg_t;
 
   typedef struct packed {
+    logic        q;
+    logic        qe;
+  } hmr_dmr_regs_reg2hw_dmr_timing_diversity_reg_t;
+
+  typedef struct packed {
     struct packed {
       logic        q;
       logic        qe;
@@ -40,6 +45,11 @@ package hmr_dmr_regs_reg_pkg;
   } hmr_dmr_regs_hw2reg_dmr_enable_reg_t;
 
   typedef struct packed {
+    logic        d;
+    logic        de;
+  } hmr_dmr_regs_hw2reg_dmr_timing_diversity_reg_t;
+
+  typedef struct packed {
     struct packed {
       logic        d;
       logic        de;
@@ -57,6 +67,7 @@ package hmr_dmr_regs_reg_pkg;
 
   // Register -> HW type
   typedef struct packed {
+    hmr_dmr_regs_reg2hw_dmr_timing_diversity_reg_t dmr_timing_diversity; // [40:39]
     hmr_dmr_regs_reg2hw_dmr_enable_reg_t dmr_enable; // [38:37]
     hmr_dmr_regs_reg2hw_dmr_config_reg_t dmr_config; // [36:33]
     hmr_dmr_regs_reg2hw_checkpoint_addr_reg_t checkpoint_addr; // [32:0]
@@ -64,6 +75,7 @@ package hmr_dmr_regs_reg_pkg;
 
   // HW -> register type
   typedef struct packed {
+    hmr_dmr_regs_hw2reg_dmr_timing_diversity_reg_t dmr_timing_diversity; // [40:39]
     hmr_dmr_regs_hw2reg_dmr_enable_reg_t dmr_enable; // [38:37]
     hmr_dmr_regs_hw2reg_dmr_config_reg_t dmr_config; // [36:33]
     hmr_dmr_regs_hw2reg_checkpoint_addr_reg_t checkpoint_addr; // [32:0]
@@ -73,6 +85,7 @@ package hmr_dmr_regs_reg_pkg;
   parameter logic [BlockAw-1:0] HMR_DMR_REGS_DMR_ENABLE_OFFSET = 4'h 0;
   parameter logic [BlockAw-1:0] HMR_DMR_REGS_DMR_CONFIG_OFFSET = 4'h 4;
   parameter logic [BlockAw-1:0] HMR_DMR_REGS_CHECKPOINT_ADDR_OFFSET = 4'h 8;
+  parameter logic [BlockAw-1:0] HMR_DMR_REGS_DMR_TIMING_DIVERSITY = 4'hc;
 
   // Register index
   typedef enum int {
@@ -82,10 +95,11 @@ package hmr_dmr_regs_reg_pkg;
   } hmr_dmr_regs_id_e;
 
   // Register width information to check illegal writes
-  parameter logic [3:0] HMR_DMR_REGS_PERMIT [3] = '{
+  parameter logic [3:0] HMR_DMR_REGS_PERMIT [4] = '{
     4'b 0001, // index[0] HMR_DMR_REGS_DMR_ENABLE
     4'b 0001, // index[1] HMR_DMR_REGS_DMR_CONFIG
-    4'b 1111  // index[2] HMR_DMR_REGS_CHECKPOINT_ADDR
+    4'b 1111, // index[2] HMR_DMR_REGS_CHECKPOINT_ADDR
+    4'b 0001
   };
 
 endpackage
