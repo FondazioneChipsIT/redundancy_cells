@@ -254,7 +254,7 @@ module hmr_dmr_regs_reg_top #(
   assign checkpoint_addr_wd = reg_wdata[31:0];
 
   assign dmr_config_timing_diversity_we = addr_hit[3] & reg_we & !reg_error;
-  assign dmr_config_timing_diversity_wd = reg_wdata[0];
+  assign dmr_config_timing_diversity_wd = reg_wdata[4];
 
   // Read data return
   always_comb begin
