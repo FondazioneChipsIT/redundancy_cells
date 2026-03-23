@@ -49,7 +49,6 @@ module hmr_unit #(
   parameter  type         reg_rsp_t      = logic,
   /// Rapid recovery structure
   parameter  type         rapid_recovery_t = logic,
-  parameter  bit          TimingDivMode = 1'b0,
   parameter  int unsigned TimingDivDelays = 0,
   // Local parameters depending on the above ones
   /// Number of TMR groups (virtual TMR cores)
