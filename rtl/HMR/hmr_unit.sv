@@ -991,7 +991,7 @@ module hmr_unit #(
       always_comb begin
         // Special signals
         core_bootaddress_o[i] = (checkpoint_reg_q[dmr_shared_id(dmr_group_id(i))] != '0) ?
-                                checkpoint_reg_q[dmr_shared_id(dmr_group_id(i))] : sys_inputs_i.boot_addr;
+                                checkpoint_reg_q[dmr_shared_id(dmr_group_id(i))] : sys_inputs_i[i].boot_addr;
         // Setback
         if (RapidRecovery) begin
           // $error("UNIMPLEMENTED");
