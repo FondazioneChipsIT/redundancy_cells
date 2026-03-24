@@ -1119,7 +1119,9 @@ module hmr_unit #(
      *****************/
     // Direct assignment, disable all
     assign core_setback_o       = '0;
-    assign core_bootaddress_o   = sys_inputs_i.boot_addr;
+    for (genvar i =0; i < NumCores; i++) begin
+      assign core_bootaddress_o[i]   = sys_inputs_i[i].boot_addr;
+    end
     assign core_inputs_o        = sys_inputs_i;
     assign sys_nominal_outputs_o = core_nominal_outputs_i;
     assign sys_bus_outputs_o     = core_bus_outputs_i;
