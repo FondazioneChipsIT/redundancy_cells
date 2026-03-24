@@ -1058,7 +1058,7 @@ module hmr_unit #(
       localparam SysCoreIndex = DMRFixed ? i/2 : dmr_core_id(dmr_group_id(i), 0);
       always_comb begin
         core_bootaddress_o[i] = (checkpoint_reg_q[SysCoreIndex] != '0) ?
-                                checkpoint_reg_q[SysCoreIndex] : sys_inputs_i.boot_addr;
+                                checkpoint_reg_q[SysCoreIndex] : sys_inputs_i[i].boot_addr;
         // Setback
         if (RapidRecovery) begin
           // $error("UNIMPLEMENTED");
