@@ -108,7 +108,7 @@ module hmr_unit #(
   input  nominal_outputs_t [NumCores-1:0]                   core_nominal_outputs_i,
   input  bus_outputs_t     [NumCores-1:0][NumBusVoters-1:0] core_bus_outputs_i,
   input  axi_req_t         [NumCores-1:0]                   core_axi_outputs_i,
-  output logic             [NumDMRGroups-1:0]               dmr_failure_to_OT_o
+  output logic             [NumDMRGroups-1:0]               dmr_timing_diversity_failure_o
 );
   function int max(int a, int b);
     return (a > b) ? a : b;
@@ -224,8 +224,8 @@ module hmr_unit #(
   nominal_outputs_t [NumDMRGroups-1:0] dmr_nominal_outputs_muxed;
 
   logic [NumDMRGroups-1:0] dmr_failure_main_demuxed;
-  logic [NumDMRGroups-1:0] dmr_failure_main_OT;
-  logic [NumDMRGroups-1:0] r_dmr_failure_main_OT;
+  logic [NumDMRGroups-1:0] dmr_timing_diversity_failure_main;
+  logic [NumDMRGroups-1:0] r_dmr_timing_diversity_failure_main;
 
   logic [NumDMRGroups-1:0] dmr_td_check_en;
   logic [NumDMRGroups-1:0] first_core_is_set;
@@ -633,26 +633,26 @@ module hmr_unit #(
 
       if (DMRTimingDivSupported) begin
         assign dmr_nominal_outputs_muxed[i] = dmr_timing_div_en[i] ? core_nominal_outputs_i[dmr_core_id(i, 0)] : dmr_nominal_outputs[i];
-        assign dmr_failure_main_OT[i]       = dmr_td_check_en[i] ? dmr_failure_main[i] : 1'b0;
+        assign dmr_timing_diversity_failure_main[i]       = dmr_td_check_en[i] ? dmr_failure_main[i] : 1'b0;
 
         always_ff @( posedge clk_i, negedge rst_ni ) begin : sample_timing_div_failure
           if (rst_ni == 1'b0) begin
-            r_dmr_failure_main_OT[i] <= 1'b0;
+            r_dmr_timing_diversity_failure_main[i] <= 1'b0;
           end else begin
-            r_dmr_failure_main_OT[i] <= dmr_failure_main_OT[i];
+            r_dmr_timing_diversity_failure_main[i] <= dmr_timing_diversity_failure_main[i];
           end
         end
 
-        assign dmr_failure_to_OT_o[i] = r_dmr_failure_main_OT[i];
+        assign dmr_timing_diversity_failure_o[i] = r_dmr_timing_diversity_failure_main[i];
 
         always_comb begin : display_timing_div_failure
-          if (dmr_failure_to_OT_o[i]) begin
+          if (dmr_timing_diversity_failure_o[i]) begin
             $display("[HMR-dual] %t - Mismatch detected in timing diversity mode", $realtime);
           end
         end
       end else begin
         assign dmr_nominal_outputs_muxed[i] = dmr_nominal_outputs[i];
-        assign dmr_failure_to_OT_o[i] = 1'b0;
+        assign dmr_timing_diversity_failure_o[i] = 1'b0;
       end
 
       if (SeparateAxiBus) begin: gen_axi_checker
