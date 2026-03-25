@@ -77,6 +77,9 @@ module hmr_dmr_regs_reg_top #(
   logic dmr_config_force_recovery_qs;
   logic dmr_config_force_recovery_wd;
   logic dmr_config_force_recovery_we;
+  logic dmr_config_timing_diversity_wd;
+  logic dmr_config_timing_diversity_we;
+  logic dmr_config_timing_diversity_qs;
   logic [31:0] checkpoint_addr_qs;
   logic [31:0] checkpoint_addr_wd;
   logic checkpoint_addr_we;
@@ -162,6 +165,32 @@ module hmr_dmr_regs_reg_top #(
     .qs     (dmr_config_force_recovery_qs)
   );
 
+  //   F[force_recovery]: 1:1
+  prim_subreg #(
+    .DW      (1),
+    .SWACCESS("RW"),
+    .RESVAL  (1'h0)
+  ) u_dmr_timing_diversity_enable (
+    .clk_i   (clk_i    ),
+    .rst_ni  (rst_ni  ),
+
+    // from register interface
+    .we     (dmr_config_timing_diversity_we),
+    .wd     (dmr_config_timing_diversity_wd),
+
+    // from internal hardware
+    .de     (hw2reg.dmr_timing_diversity.de),
+    .d      (hw2reg.dmr_timing_diversity.d ),
+
+    // to internal hardware
+    .qe     (reg2hw.dmr_timing_diversity.qe),
+    .q      (reg2hw.dmr_timing_diversity.q ),
+
+    // to register interface (read)
+    .qs     (dmr_config_timing_diversity_qs)
+  );
+
+
 
   // R[checkpoint_addr]: V(False)
 
@@ -192,12 +221,13 @@ module hmr_dmr_regs_reg_top #(
 
 
 
-  logic [2:0] addr_hit;
+  logic [3:0] addr_hit;
   always_comb begin
     addr_hit = '0;
     addr_hit[0] = (reg_addr == HMR_DMR_REGS_DMR_ENABLE_OFFSET);
     addr_hit[1] = (reg_addr == HMR_DMR_REGS_DMR_CONFIG_OFFSET);
     addr_hit[2] = (reg_addr == HMR_DMR_REGS_CHECKPOINT_ADDR_OFFSET);
+    addr_hit[3] = (reg_addr == HMR_DMR_REGS_DMR_TIMING_DIVERSITY);
   end
 
   assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0 ;
@@ -207,7 +237,8 @@ module hmr_dmr_regs_reg_top #(
     wr_err = (reg_we &
               ((addr_hit[0] & (|(HMR_DMR_REGS_PERMIT[0] & ~reg_be))) |
                (addr_hit[1] & (|(HMR_DMR_REGS_PERMIT[1] & ~reg_be))) |
-               (addr_hit[2] & (|(HMR_DMR_REGS_PERMIT[2] & ~reg_be)))));
+               (addr_hit[2] & (|(HMR_DMR_REGS_PERMIT[2] & ~reg_be))) |
+               (addr_hit[3] & (|(HMR_DMR_REGS_PERMIT[3] & ~reg_be)))));
   end
 
   assign dmr_enable_we = addr_hit[0] & reg_we & !reg_error;
@@ -221,6 +252,9 @@ module hmr_dmr_regs_reg_top #(
 
   assign checkpoint_addr_we = addr_hit[2] & reg_we & !reg_error;
   assign checkpoint_addr_wd = reg_wdata[31:0];
+
+  assign dmr_config_timing_diversity_we = addr_hit[3] & reg_we & !reg_error;
+  assign dmr_config_timing_diversity_wd = reg_wdata[4];
 
   // Read data return
   always_comb begin

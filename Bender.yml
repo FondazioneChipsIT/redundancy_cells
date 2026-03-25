@@ -112,6 +112,7 @@ sources:
       - rtl/HMR/recovery_pc.sv
       - rtl/HMR/recovery_rf.sv
       - rtl/HMR/rapid_recovery_unit.sv
+      - rtl/HMR/DMR_delay_chain.sv
       - rtl/HMR/DMR_checker.sv
       - rtl/HMR/DMR_CSR_checker.sv
       - rtl/HMR/DMR_address_generator.sv

@@ -42,6 +42,7 @@ module hmr_dmr_ctrl
   output logic       sw_resynch_req_o,
   output logic       sw_synch_req_o,
   output logic [DataWidth-1:0] checkpoint_o,
+  output logic       dmr_timing_div_en_o,
   output logic       grp_in_independent_o,
   output logic       rapid_recovery_en_o,
   output logic [1:0] dmr_incr_mismatches_o,
@@ -57,7 +58,7 @@ module hmr_dmr_ctrl
   logic resynch_req, resynch_req_sent_d, resynch_req_sent_q;
   logic cores_synch_q;
 
-  typedef enum logic [2:0] {NON_DMR, DMR_RUN, DMR_RESTORE} dmr_mode_e;
+  typedef enum logic [2:0] {NON_DMR, DMR_RUN, DMR_RESTORE, DMR_SETBACK, DMR_WAIT} dmr_mode_e;
   localparam dmr_mode_e DefaultDMRMode = DefaultInDMR || DMRFixed ? DMR_RUN : NON_DMR;
 
   hmr_dmr_regs_reg_pkg::hmr_dmr_regs_reg2hw_t dmr_reg2hw;
@@ -73,6 +74,7 @@ module hmr_dmr_ctrl
   assign sw_resynch_req_o = resynch_req & ~resynch_req_sent_q;
   assign resynch_req_sent_d = resynch_req;
   assign checkpoint_o = dmr_reg2hw.checkpoint_addr.q;
+  assign dmr_timing_div_en_o = dmr_reg2hw.dmr_timing_diversity.q;
 
   hmr_dmr_regs_reg_top #(
     .reg_req_t(reg_req_t),
@@ -123,7 +125,9 @@ module hmr_dmr_ctrl
         end
 
         if (dmr_error_i && (!RapidRecovery || !dmr_reg2hw.dmr_config.rapid_recovery.q)) begin
-          $display("[HMR-dual] %t - mismatch detected, SW trigger", $realtime);
+          if (!dmr_reg2hw.dmr_timing_diversity.q) begin
+            $display("[HMR-dual] %t - mismatch detected, SW trigger", $realtime);
+          end
           resynch_req = 1'b1;
         end
       end
@@ -134,6 +138,15 @@ module hmr_dmr_ctrl
           $display("[HMR-dual] %t - mismatch restored", $realtime);
           dmr_red_mode_d = DMR_RUN;
         end
+      end
+
+      DMR_SETBACK: begin
+        dmr_red_mode_d = DMR_WAIT;
+        setback_o = 2'b11;
+      end
+
+      DMR_WAIT: begin
+        dmr_red_mode_d = DMR_RUN;
       end
 
       // Default: do nothing
@@ -148,8 +161,7 @@ module hmr_dmr_ctrl
           if (dmr_reg2hw.dmr_config.rapid_recovery.q == 1'b1) begin
             dmr_red_mode_d = DMR_RESTORE;
           end else begin
-            dmr_red_mode_d = DMR_RUN;
-            setback_o = 2'b11;
+            dmr_red_mode_d = DMR_SETBACK;
           end
         end
       end
