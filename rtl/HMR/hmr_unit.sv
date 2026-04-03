@@ -738,30 +738,19 @@ module hmr_unit #(
           .debug_resume_o           ( rapid_recovery_bus[i].debug_resume          )
         );
 
-        if (DMRTimingDivSupported) begin : gen_timing_div_failure_handle
-          always_comb begin
-            dmr_failure[i] = (dmr_timing_div_en[i] ? (dmr_td_check_en[i] ? dmr_failure_main[i] : 1'b0) : dmr_failure_main[i]) | (dmr_core_rapid_recovery_en[dmr_core_id(i, 0)] ? dmr_failure_backup[i] : 1'b0) | dmr_failure_axi[i];
-            for (int j = 0; j < NumBusVoters; j++) begin
-              if (enable_bus_vote_i[dmr_core_id(i, 0)][j]) begin
-                dmr_failure[i] = dmr_failure[i] | (dmr_core_rapid_recovery_en[dmr_core_id(i, 0)] ? dmr_failure_backup[i] : 1'b0) | dmr_failure_data[i][j];
-              end
-            end
-        end  
-        end else begin
-          always_comb begin
-            dmr_failure[i] =  dmr_failure_main[i] | (dmr_core_rapid_recovery_en[dmr_core_id(i, 0)] ? dmr_failure_backup[i] : 1'b0) | dmr_failure_axi[i];
-            for (int j = 0; j < NumBusVoters; j++) begin
-              if (enable_bus_vote_i[dmr_core_id(i, 0)][j]) begin
-                dmr_failure[i] = dmr_failure[i] | (dmr_core_rapid_recovery_en[dmr_core_id(i, 0)] ? dmr_failure_backup[i] : 1'b0) | dmr_failure_data[i][j];
-              end
+        always_comb begin
+          dmr_failure[i] =  (dmr_timing_div_en[i] ? (dmr_td_check_en[i] ? dmr_failure_main[i] : 1'b0) : dmr_failure_main[i]) |
+                            (dmr_core_rapid_recovery_en[dmr_core_id(i, 0)] ? dmr_failure_backup[i] : 1'b0)                  |
+                             dmr_failure_axi[i];
+          for (int j = 0; j < NumBusVoters; j++) begin
+            if (enable_bus_vote_i[dmr_core_id(i, 0)][j]) begin
+              dmr_failure[i] = dmr_failure[i] | (dmr_core_rapid_recovery_en[dmr_core_id(i, 0)] ? dmr_failure_backup[i] : 1'b0) | dmr_failure_data[i][j];
             end
           end
         end
-
-        
       end else begin : gen_standard_failure
         always_comb begin
-          dmr_failure[i] = dmr_failure_main[i] | dmr_failure_axi[i];
+          dmr_failure[i] = (dmr_timing_div_en[i] ? (dmr_td_check_en[i] ? dmr_failure_main[i] : 1'b0) : dmr_failure_main[i]) | dmr_failure_axi[i];
           for (int j = 0; j < NumBusVoters; j++) begin
             if (enable_bus_vote_i[dmr_core_id(i, 0)][j]) begin
               dmr_failure[i] = dmr_failure[i] | dmr_failure_data[i][j];
@@ -887,6 +876,9 @@ module hmr_unit #(
       end
     end
 
+    // TODO: find a smarter way to instantiate this. As of now, this code is repeated
+    // in the full_hmr and the dmr_only cases. It would be better to instantiate it
+    // separately and then only drive specific connections here.
     if (DMRTimingDivSupported) begin : gen_timing_diversity_hw
       for (genvar i=0; i < NumCores; i++) begin : gen_delay_chains
 
@@ -911,13 +903,12 @@ module hmr_unit #(
             .outputs_o  ( core_setback_delayed[i] )
           );
 
-          // Inputs for cores from 4 to 7 are delayed on the following condition:
-          // - only when the timing diversity mode has been enabled via sw
-          // - only after the cores have been coupled
-          // - only after the setback for the specific core has been received:
-          //    this way we avoid repeating signals (repeating data_gnt in LSU without rvalid)
-          //    when switching from normal mode to timing diversity.
-
+          // Inputs to helper cores are delayed on the following condition:
+          // - only when the timing diversity mode has been enabled via sw;
+          // - only after the cores have been grouped;
+          // - only after the setback for the specific core has been received.
+          // This way, we avoid signals repetition (i.e. "data_gnt in LSU without rvalid")
+          // when switching from independent mode to timing diversity mode.
           assign sys_inputs_timing_div_muxed[dmr_core_id(dmr_group_id(i), 0)] = (dmr_timing_div_en[dmr_core_id(dmr_group_id(i), 0)] & core_in_dmr[i] & second_core_is_set[dmr_core_id(dmr_group_id(i), 0)]) ? sys_inputs_delayed[dmr_core_id(dmr_group_id(i), 0)] : sys_inputs_i[dmr_core_id(dmr_group_id(i), 0)];
           assign core_setback_o[i] = dmr_timing_div_en[dmr_core_id(dmr_group_id(i), 0)] ? core_setback_delayed[i] : core_setback_int[i];
         end else begin : gen_delay_on_core_outputs
@@ -932,19 +923,20 @@ module hmr_unit #(
             .outputs_o ( core_nominal_outputs_delayed[i] )
           );
 
+          assign core_setback_delayed[i] = '0;
           assign core_nominal_outputs_muxed[i] = (dmr_timing_div_en[dmr_core_id(dmr_group_id(i), 0)] & core_in_dmr[i]) ? core_nominal_outputs_delayed[i] : core_nominal_outputs_i[i];
           assign core_setback_o[i] = core_setback_int[i];
         end
       end
-    end else begin
+    end else begin : gen_no_timing_diversity_hw
+      assign sys_inputs_delayed = '0;
+      assign core_nominal_outputs_delayed = '0;
+      assign core_setback_o = core_setback_int;
       for (genvar i=0; i < NumCores; i++) begin : gen_no_timing_div_bindings
-        if (i>=(NumCores>>1)) begin
+        if (i>=(NumCores>>1))
           assign sys_inputs_timing_div_muxed[dmr_core_id(dmr_group_id(i), 0)] = sys_inputs_i[dmr_core_id(dmr_group_id(i), 0)];
-          assign core_setback_o[i] = core_setback_int[i];
-        end else begin
+        else
           assign core_nominal_outputs_muxed[i] = core_nominal_outputs_i[i];
-          assign core_setback_o[i] = core_setback_int[i];
-        end
       end
     end
 
@@ -1079,6 +1071,70 @@ module hmr_unit #(
         end
       end
     end // gen_core_inputs
+
+    // TODO: find a smarter way to instantiate this. As of now, this code is repeated
+    // in the full_hmr and the dmr_only cases. It would be better to instantiate it
+    // separately and then only drive specific connections here.
+    if (DMRTimingDivSupported) begin : gen_timing_diversity_hw
+      for (genvar i=0; i < NumCores; i++) begin : gen_delay_chains
+
+        if (i>=(NumCores>>1)) begin : gen_delay_on_core_inputs
+          DMR_delay_chain #(
+            .NUM_DELAYS ( TimingDivDelays   ),
+            .data_t     ( all_inputs_t )
+          ) i_dmr_delay_core_inputs (
+            .clk_i,
+            .rst_ni,
+            .inputs_i  ( sys_inputs_i[dmr_core_id(dmr_group_id(i), 0)]       ),
+            .outputs_o ( sys_inputs_delayed[dmr_core_id(dmr_group_id(i), 0)] )
+          );
+
+          DMR_delay_chain #(
+            .NUM_DELAYS ( TimingDivDelays ),
+            .data_t     ( logic      )
+          ) i_dmr_delay_core_setback (
+            .clk_i,
+            .rst_ni,
+            .inputs_i   ( core_setback_int[i]     ),
+            .outputs_o  ( core_setback_delayed[i] )
+          );
+
+          // Inputs to helper cores are delayed on the following condition:
+          // - only when the timing diversity mode has been enabled via sw;
+          // - only after the cores have been grouped;
+          // - only after the setback for the specific core has been received.
+          // This way, we avoid signals repetition (i.e. "data_gnt in LSU without rvalid")
+          // when switching from independent mode to timing diversity mode.
+          assign sys_inputs_timing_div_muxed[dmr_core_id(dmr_group_id(i), 0)] = (dmr_timing_div_en[dmr_core_id(dmr_group_id(i), 0)] & core_in_dmr[i] & second_core_is_set[dmr_core_id(dmr_group_id(i), 0)]) ? sys_inputs_delayed[dmr_core_id(dmr_group_id(i), 0)] : sys_inputs_i[dmr_core_id(dmr_group_id(i), 0)];
+          assign core_setback_o[i] = dmr_timing_div_en[dmr_core_id(dmr_group_id(i), 0)] ? core_setback_delayed[i] : core_setback_int[i];
+        end else begin : gen_delay_on_core_outputs
+
+          DMR_delay_chain #(
+            .NUM_DELAYS ( TimingDivDelays ),
+            .data_t (nominal_outputs_t )
+          ) i_dmr_delay_core_ouputs (
+            .clk_i,
+            .rst_ni,
+            .inputs_i  ( core_nominal_outputs_i[i]       ),
+            .outputs_o ( core_nominal_outputs_delayed[i] )
+          );
+
+          assign core_setback_delayed[i] = '0;
+          assign core_nominal_outputs_muxed[i] = (dmr_timing_div_en[dmr_core_id(dmr_group_id(i), 0)] & core_in_dmr[i]) ? core_nominal_outputs_delayed[i] : core_nominal_outputs_i[i];
+          assign core_setback_o[i] = core_setback_int[i];
+        end
+      end
+    end else begin : gen_no_timing_diversity_hw
+      assign sys_inputs_delayed = '0;
+      assign core_nominal_outputs_delayed = '0;
+      assign core_setback_o = core_setback_int;
+      for (genvar i=0; i < NumCores; i++) begin : gen_no_timing_div_bindings
+        if (i>=(NumCores>>1))
+          assign sys_inputs_timing_div_muxed[dmr_core_id(dmr_group_id(i), 0)] = sys_inputs_i[dmr_core_id(dmr_group_id(i), 0)];
+        else
+          assign core_nominal_outputs_muxed[i] = core_nominal_outputs_i[i];
+      end
+    end
 
     for (genvar i = 0; i < NumSysCores; i++) begin : gen_core_outputs
       localparam CoreCoreIndex = DMRFixed ? i : dmr_group_id(i);
