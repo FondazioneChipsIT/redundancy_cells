@@ -865,11 +865,7 @@ module hmr_unit #(
         if (i < NumTMRCores && core_in_tmr[i]) begin : tmr_mode
           core_inputs_o[i] = sys_inputs_i[TMRCoreIndex];
         end else if (i < NumDMRCores && core_in_dmr[i]) begin : dmr_mode
-          if (i<(NumCores>>1)) begin
-            core_inputs_o[i] = sys_inputs_i[DMRCoreIndex];
-          end else begin
-            core_inputs_o[i] = sys_inputs_timing_div_muxed[DMRCoreIndex];
-          end
+          core_inputs_o[i] = (i<NumDMRGroups) ? sys_inputs_i[DMRCoreIndex] : sys_inputs_timing_div_muxed[DMRCoreIndex];
         end else begin : independent_mode
           core_inputs_o[i] = sys_inputs_i[i];
         end
@@ -882,7 +878,7 @@ module hmr_unit #(
     if (DMRTimingDivSupported) begin : gen_timing_diversity_hw
       for (genvar i=0; i < NumCores; i++) begin : gen_delay_chains
 
-        if (i>=(NumCores>>1)) begin : gen_delay_on_core_inputs
+        if (i>=NumDMRGroups) begin : gen_delay_on_core_inputs
           DMR_delay_chain #(
             .NUM_DELAYS ( TimingDivDelays   ),
             .data_t     ( all_inputs_t )
@@ -933,7 +929,7 @@ module hmr_unit #(
       assign core_nominal_outputs_delayed = '0;
       assign core_setback_o = core_setback_int;
       for (genvar i=0; i < NumCores; i++) begin : gen_no_timing_div_bindings
-        if (i>=(NumCores>>1))
+        if (i>=NumDMRGroups)
           assign sys_inputs_timing_div_muxed[dmr_core_id(dmr_group_id(i), 0)] = sys_inputs_i[dmr_core_id(dmr_group_id(i), 0)];
         else
           assign core_nominal_outputs_muxed[i] = core_nominal_outputs_i[i];
@@ -1065,11 +1061,7 @@ module hmr_unit #(
           core_setback_int    [i] = '0;
         end
         if (i < NumDMRCores && (DMRFixed || core_in_dmr[i])) begin : dmr_mode
-          if (i<(NumCores>>1)) begin
-            core_inputs_o[i] = sys_inputs_i[SysCoreIndex];
-          end else begin
-            core_inputs_o[i] = sys_inputs_timing_div_muxed[SysCoreIndex];
-          end
+          core_inputs_o[i] = (i<NumDMRGroups) ? sys_inputs_i[SysCoreIndex] : sys_inputs_timing_div_muxed[SysCoreIndex];
         end else begin : gen_independent_mode
           core_inputs_o[i] = sys_inputs_i[i];
         end
@@ -1082,7 +1074,7 @@ module hmr_unit #(
     if (DMRTimingDivSupported) begin : gen_timing_diversity_hw
       for (genvar i=0; i < NumCores; i++) begin : gen_delay_chains
 
-        if (i>=(NumCores>>1)) begin : gen_delay_on_core_inputs
+        if (i>=NumDMRGroups) begin : gen_delay_on_core_inputs
           DMR_delay_chain #(
             .NUM_DELAYS ( TimingDivDelays   ),
             .data_t     ( all_inputs_t )
@@ -1133,7 +1125,7 @@ module hmr_unit #(
       assign core_nominal_outputs_delayed = '0;
       assign core_setback_o = core_setback_int;
       for (genvar i=0; i < NumCores; i++) begin : gen_no_timing_div_bindings
-        if (i>=(NumCores>>1))
+        if (i>=NumDMRGroups)
           assign sys_inputs_timing_div_muxed[dmr_core_id(dmr_group_id(i), 0)] = sys_inputs_i[dmr_core_id(dmr_group_id(i), 0)];
         else
           assign core_nominal_outputs_muxed[i] = core_nominal_outputs_i[i];
