@@ -1065,7 +1065,11 @@ module hmr_unit #(
           core_setback_int    [i] = '0;
         end
         if (i < NumDMRCores && (DMRFixed || core_in_dmr[i])) begin : dmr_mode
-          core_inputs_o[i] = sys_inputs_i[SysCoreIndex];
+          if (i<(NumCores>>1)) begin
+            core_inputs_o[i] = sys_inputs_i[SysCoreIndex];
+          end else begin
+            core_inputs_o[i] = sys_inputs_timing_div_muxed[SysCoreIndex];
+          end
         end else begin : gen_independent_mode
           core_inputs_o[i] = sys_inputs_i[i];
         end
